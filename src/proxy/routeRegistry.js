@@ -19,7 +19,7 @@
  * "/api/v1/users/42" matches "/api/v1/users" because it is more specific.
  */
 
-import pool from "./pool.js";
+import pool from "../db/pool.js";
 
 const RELOAD_INTERVAL_MS = 15000; // Re-read routes from DB every 15 seconds.
 
@@ -64,8 +64,12 @@ async function loadRoutes() {
 function matchRoute(requestPath) {
   // The registry is sorted by prefix length DESC (done in the SQL ORDER BY).
   // We iterate and return the first (longest) match.
+
+  console.log(requestPath);
   for (const [prefix, config] of registry) {
     if (requestPath.startsWith(prefix)) {
+      console.log("[RouteRegistry] Matched:", requestPath, "->", prefix); // temporary
+
       return config;
     }
   }

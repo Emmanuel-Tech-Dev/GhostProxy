@@ -29,9 +29,9 @@ import http from "http";
 import https from "https";
 import { URL } from "url";
 import { matchRoute } from "./routeRegistry.js";
-import { getCachedResponse, setCachedResponse } from "./cacheManager.js";
-import { consumeToken } from "./tokenBucket.js";
-import { log } from "./batchLogger.js";
+import { getCachedResponse, setCachedResponse } from "../cache/cacheManager.js";
+import { consumeToken } from "../ratelimiter/tokenBucket.js";
+import { log } from "../logger/batchLogger.js";
 
 /**
  * Extracts the real client IP from the request.
@@ -98,10 +98,6 @@ function forwardRequest(options, body) {
  *
  * Requests that match a registered route are handled here.
  * Requests that do not match fall through to next() (management API routes).
- *
- * @param {import('express').Request} req
- * @param {import('express').Response} res
- * @param {import('express').NextFunction} next
  */
 async function interceptor(req, res, next) {
   const route = matchRoute(req.path);
@@ -201,6 +197,15 @@ async function interceptor(req, res, next) {
       ? req.url.slice(req.url.indexOf("?"))
       : "";
 
+    // temporary
+    console.log("[Interceptor] Route matched:", route.prefix);
+    console.log("[Interceptor] upstream_url:", route.upstream_url);
+    console.log("[Interceptor] forwardedPath:", forwardedPath);
+    console.log(
+      "[Interceptor] Final URL:",
+      upstreamBase.hostname + forwardedPath,
+    );
+
     const options = {
       protocol: upstreamBase.protocol,
       hostname: upstreamBase.hostname,
@@ -220,13 +225,35 @@ async function interceptor(req, res, next) {
     };
 
     // Collect the original request body for non-GET methods.
-    // Express does not buffer the body by default, so we do it manually
-    // to avoid depending on body-parser (which might have already consumed it).
-    const requestBody = await new Promise((resolve) => {
-      const chunks = [];
-      req.on("data", (c) => chunks.push(c));
-      req.on("end", () => resolve(Buffer.concat(chunks)));
-    });
+    //
+    // WHY THIS LOGIC EXISTS:
+    // express.json() runs before the interceptor and consumes the raw request
+    // stream for any request with a JSON content-type. Once a stream is consumed
+    // it cannot be re-read - listening for "data" and "end" events would hang
+    // forever because "end" already fired, causing a timeout on every request.
+    //
+    // So we check in order:
+    // 1. If Express already parsed the body (req.body is a non-empty object),
+    //    re-serialize it back to a Buffer and use that.
+    // 2. If the stream has not been consumed (req.readable is still true),
+    //    read it manually. This covers raw/non-JSON content types.
+    // 3. Otherwise (GET, HEAD, no body) resolve with an empty Buffer immediately.
+    let requestBody;
+
+    if (req.body && Object.keys(req.body).length > 0) {
+      // express.json() already parsed it - re-serialize for forwarding.
+      requestBody = Buffer.from(JSON.stringify(req.body));
+    } else if (req.readable) {
+      // Stream has not been consumed yet - read it manually.
+      requestBody = await new Promise((resolve) => {
+        const chunks = [];
+        req.on("data", (c) => chunks.push(c));
+        req.on("end", () => resolve(Buffer.concat(chunks)));
+      });
+    } else {
+      // GET / HEAD / stream already consumed with no body - nothing to forward.
+      requestBody = Buffer.alloc(0);
+    }
 
     const upstream = await forwardRequest(options, requestBody);
 

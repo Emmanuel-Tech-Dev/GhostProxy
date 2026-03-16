@@ -1,30 +1,13 @@
-/**
- * server.js
- *
- * Application entry point.
- *
- * Startup sequence order matters:
- * 1. Load env vars before any module reads process.env.
- * 2. Load routes from DB so the interceptor is ready before we accept traffic.
- * 3. Register middleware in the correct order.
- * 4. Start the logger flush timer.
- * 5. Bind to the port and begin accepting connections.
- *
- * Shutdown sequence:
- * SIGTERM -> stop accepting new connections -> flush logs -> close DB pool -> exit.
- * This order ensures no request is dropped mid-flight and no logs are lost.
- */
-
 import "dotenv/config";
 import express from "express";
 import cors from "cors";
-import { loadRoutes, startWatching } from "./routeRegistry.js";
-import { interceptor } from "./interceptor.js";
-import { startFlushing, stopFlushing } from "./batchLogger.js";
-import routesApi from "./routesApi.js";
-import analyticsApi from "./analyticsApi.js";
+import { loadRoutes, startWatching } from "./proxy/routeRegistry.js";
+import { interceptor } from "./proxy/interceptor.js";
+import { startFlushing, stopFlushing } from "./logger/batchLogger.js";
+import routesApi from "./routes/routesApi.js";
+import analyticsApi from "./routes/analyticsApi.js";
 import errorHandler from "./ErrorHandler.js";
-import pool from "./pool.js";
+import pool from "./db/pool.js";
 
 const app = express();
 const PORT = Number(process.env.PORT) || 4000;
@@ -35,32 +18,24 @@ app.use(
   cors({
     // In production, restrict this to your dashboard origin.
     origin: process.env.CORS_ORIGIN || "*",
-  })
+  }),
 );
 
-// Parse JSON bodies for the management API.
-// The interceptor bypasses this because it reads the raw request stream itself.
 app.use(express.json());
 
-// --- Health check ---
-// Always responds immediately. Used by load balancers and Docker healthchecks.
 app.get("/health", (req, res) => {
   res.json({ status: "ok", uptime: process.uptime() });
 });
 
 // --- Management API ---
-// These are registered BEFORE the interceptor so that requests to /api/*
-// are handled by the management router and do not get proxied upstream.
+
 app.use("/api/routes", routesApi);
 app.use("/api/analytics", analyticsApi);
 
 // --- Proxy Interceptor ---
-// Catches all requests that are not management API endpoints.
-// matchRoute() inside the interceptor determines whether to proxy or fall through.
+
 app.use(interceptor);
 
-// --- 404 fallback ---
-// Reached only if the interceptor calls next() and no other handler matched.
 app.use((req, res) => {
   res.status(404).json({
     error: "Not Found",

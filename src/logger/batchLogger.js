@@ -27,7 +27,7 @@
  * not drop the final batch of logs.
  */
 
-import pool from "./pool.js";
+import pool from "../db/pool.js";
 
 const BUFFER_MAX_SIZE = Number(process.env.LOG_BUFFER_MAX_SIZE) || 1000;
 const FLUSH_INTERVAL_MS = Number(process.env.LOG_FLUSH_INTERVAL_MS) || 10000;

@@ -11,9 +11,9 @@
  */
 
 import { Router } from "express";
-import pool from "./pool.js";
-import { getCacheMetrics } from "./cacheManager.js";
-import { getBucketStoreSize } from "./tokenBucket.js";
+import pool from "../db/pool.js";
+import { getCacheMetrics } from "../cache/cacheManager.js";
+import { getBucketStoreSize } from "../ratelimiter/tokenBucket.js";
 
 const router = Router();
 

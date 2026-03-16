@@ -13,8 +13,8 @@
  */
 
 import { Router } from "express";
-import pool from "./pool.js";
-import { loadRoutes } from "./routeRegistry.js";
+import pool from "../db/pool.js";
+import { loadRoutes } from "../proxy/routeRegistry.js";
 
 const router = Router();
 
