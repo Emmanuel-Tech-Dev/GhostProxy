@@ -1,0 +1,23 @@
+{
+  "name": "observability-wrapper",
+  "version": "1.0.0",
+  "description": "Smart observability sidecar proxy with caching, analytics, and rate-limiting",
+  "main": "src/server.js",
+  "type": "module",
+  "scripts": {
+    "dev": "node --watch server.js",
+    "start": "node server.js",
+    "migrate": "node src/db/migrate.js"
+  },
+  "dependencies": {
+    "express": "^4.19.2",
+    "mysql2": "^3.10.1",
+    "http-proxy-middleware": "^3.0.0",
+    "dotenv": "^16.4.5",
+    "cors": "^2.8.5",
+    "morgan": "^1.10.0"
+  },
+  "devDependencies": {
+    "nodemon": "^3.1.4"
+  }
+}
