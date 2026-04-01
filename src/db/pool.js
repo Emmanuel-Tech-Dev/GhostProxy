@@ -7,16 +7,11 @@ const pool = mysql.createPool({
   // password: process.env.DB_PASSWORD,
   database: process.env.DB_NAME,
 
-  // How many connections to keep open at once.
-  // Most analytics queries are short-lived, so 10 is generous for a single-node setup.
   connectionLimit: 10,
 
-  // Automatically ping idle connections so MySQL does not close them
-  // after the default 8-hour wait_timeout.
   enableKeepAlive: true,
   keepAliveInitialDelay: 30000,
 
-  // Return dates as strings, not JS Date objects, to avoid timezone surprises.
   dateStrings: true,
 });
 

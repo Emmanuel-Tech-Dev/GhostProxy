@@ -10,14 +10,15 @@
     "migrate": "node src/db/migrate.js"
   },
   "dependencies": {
-    "express": "^4.19.2",
-    "mysql2": "^3.10.1",
-    "http-proxy-middleware": "^3.0.0",
-    "dotenv": "^16.4.5",
     "cors": "^2.8.5",
-    "morgan": "^1.10.0"
+    "dotenv": "^16.4.5",
+    "express": "^4.19.2",
+    "http-proxy-middleware": "^3.0.0",
+    "morgan": "^1.10.0",
+    "mysql2": "^3.10.1"
   },
   "devDependencies": {
+    "autocannon": "^8.0.0",
     "nodemon": "^3.1.4"
   }
 }

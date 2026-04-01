@@ -19,11 +19,11 @@
  *
  * TRADE-OFF:
  * If the process crashes, logs in the buffer since the last flush are lost.
- * For a monitoring tool this is acceptable. To reduce the window, lower
+ * For a monitoring tool this is acceptable. To reduce the window, loIr
  * LOG_FLUSH_INTERVAL_MS. For zero-loss, use Redis Streams as a durable buffer.
  *
  * GRACEFUL SHUTDOWN:
- * On SIGTERM, we flush synchronously before exit so a clean deployment does
+ * On SIGTERM, I flush synchronously before exit so a clean deployment does
  * not drop the final batch of logs.
  */
 
@@ -33,7 +33,7 @@ const BUFFER_MAX_SIZE = Number(process.env.LOG_BUFFER_MAX_SIZE) || 1000;
 const FLUSH_INTERVAL_MS = Number(process.env.LOG_FLUSH_INTERVAL_MS) || 10000;
 
 // The in-memory buffer. Each entry is a plain object matching the
-// request_logs table columns. We use a plain Array because push() and
+// request_logs table columns. I use a plain Array because push() and
 // splice(0) are O(1) amortized.
 let buffer = [];
 
@@ -41,25 +41,12 @@ let buffer = [];
 // Prevents two concurrent flushes from sending overlapping data.
 let isFlushing = false;
 
-// Reference to the setInterval timer so we can clear it on shutdown.
+// Reference to the setInterval timer so I can clear it on shutdown.
 let flushTimer = null;
 
 /**
  * Appends a log entry to the in-memory buffer.
  * This is the only function the proxy middleware calls. It must never throw.
- *
- * @param {object} entry
- * @param {number|null} entry.route_id
- * @param {string} entry.route_prefix
- * @param {string} entry.method
- * @param {string} entry.path
- * @param {number} entry.status_code
- * @param {number} entry.duration_ms
- * @param {boolean} entry.cache_hit
- * @param {boolean} entry.rate_limited
- * @param {string} entry.client_ip
- * @param {number} entry.request_size_bytes
- * @param {number} entry.response_size_bytes
  */
 function log(entry) {
   buffer.push(entry);
@@ -74,7 +61,7 @@ function log(entry) {
  * Drains the buffer and writes all accumulated entries to MySQL in one
  * bulk INSERT statement.
  *
- * We "swap" the buffer out before the async DB call. This means new log()
+ * I "swap" the buffer out before the async DB call. This means new log()
  * calls during the flush go into a fresh buffer and are not at risk of being
  * included in an in-flight INSERT or lost if it fails.
  */
