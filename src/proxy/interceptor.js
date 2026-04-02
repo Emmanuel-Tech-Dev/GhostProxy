@@ -29,7 +29,7 @@ import http from "http";
 import https from "https";
 import { URL } from "url";
 import { matchRoute } from "./routeRegistry.js";
-import { getCachedResponse, setCachedResponse } from "../cache/cacheManager.js";
+import { getOrFetch } from "../cache/cacheManager.js";
 import { consumeToken } from "../ratelimiter/tokenBucket.js";
 import { log } from "../logger/batchLogger.js";
 
@@ -98,6 +98,10 @@ function forwardRequest(options, body) {
  *
  * Requests that match a registered route are handled here.
  * Requests that do not match fall through to next() (management API routes).
+ *
+ * @param {import('express').Request} req
+ * @param {import('express').Response} res
+ * @param {import('express').NextFunction} next
  */
 async function interceptor(req, res, next) {
   const route = matchRoute(req.path);
@@ -152,61 +156,45 @@ async function interceptor(req, res, next) {
       }
     }
 
-    // STEP 2: Cache check.
-    if (route.cache_enabled) {
-      const cached = getCachedResponse(req);
+    // STEP 2 + 3 + 4: Cache check, coalescing, upstream forward, and cache store.
+    //
+    // These three steps are now handled by a single getOrFetch() call.
+    // This eliminates the Cache Stampede problem by ensuring only one upstream
+    // call fires per unique resource, regardless of concurrent request count.
+    //
+    // getOrFetch() returns three possible states:
+    // - fromCache: true   -> LRU HIT, served from memory
+    // - coalesced: true   -> another request was already in-flight, we waited
+    //                        for its result instead of firing our own call
+    // - both false        -> we were the designated fetcher, result is fresh
+    //
+    // The fetchFn callback is only called if getOrFetch decides a real upstream
+    // call is needed. cacheManager never knows how to talk to the upstream -
+    // that knowledge stays in the interceptor.
 
-      if (cached) {
-        cacheHit = true;
+    // Build the upstream request body and options outside fetchFn so they are
+    // only constructed once regardless of whether fetchFn is actually called.
+    let requestBody;
 
-        // Replay the original upstream headers (content-type, etc.).
-        // We strip hop-by-hop headers that must not be forwarded.
-        const {
-          connection,
-          "transfer-encoding": te,
-          ...safeHeaders
-        } = cached.headers;
-        res.set(safeHeaders);
-        res.set("X-Cache", "HIT");
-        res.set("X-Cache-Age", String(Date.now()));
-        res.status(cached.statusCode).send(cached.body);
-
-        log({
-          route_id: route.id,
-          route_prefix: route.prefix,
-          method: req.method,
-          path: req.path,
-          status_code: cached.statusCode,
-          duration_ms: Date.now() - startTime,
-          cache_hit: true,
-          rate_limited: false,
-          client_ip: clientIp,
-          request_size_bytes: Number(req.headers["content-length"] || 0),
-          response_size_bytes: cached.body.length,
-        });
-
-        return;
-      }
+    if (req.body && Object.keys(req.body).length > 0) {
+      requestBody = Buffer.from(JSON.stringify(req.body));
+    } else if (req.readable) {
+      requestBody = await new Promise((resolve) => {
+        const chunks = [];
+        req.on("data", (c) => chunks.push(c));
+        req.on("end", () => resolve(Buffer.concat(chunks)));
+      });
+    } else {
+      requestBody = Buffer.alloc(0);
     }
 
-    // STEP 3: Forward to upstream.
-    // Parse the upstream URL and construct the forwarded request options.
     const upstreamBase = new URL(route.upstream_url);
     const forwardedPath = req.path.replace(route.prefix, "") || "/";
     const queryString = req.url.includes("?")
       ? req.url.slice(req.url.indexOf("?"))
       : "";
 
-    // temporary
-    console.log("[Interceptor] Route matched:", route.prefix);
-    console.log("[Interceptor] upstream_url:", route.upstream_url);
-    console.log("[Interceptor] forwardedPath:", forwardedPath);
-    console.log(
-      "[Interceptor] Final URL:",
-      upstreamBase.hostname + forwardedPath,
-    );
-
-    const options = {
+    const upstreamOptions = {
       protocol: upstreamBase.protocol,
       hostname: upstreamBase.hostname,
       port:
@@ -215,62 +203,49 @@ async function interceptor(req, res, next) {
       method: req.method,
       headers: {
         ...req.headers,
-        // Replace the Host header with the upstream's host.
-        // Without this, many upstream servers reject the request.
         host: upstreamBase.hostname,
-        // Tag the request so the upstream can identify it came through the wrapper.
         "x-forwarded-by": "observability-wrapper",
         "x-forwarded-for": clientIp,
       },
     };
+    const response = await getOrFetch(
+      req,
+      async () => {
+        console.log(
+          "[Stampede-Test] Cache MISS - upstream call starting for:",
+          req.path,
+        );
+        const result = await forwardRequest(upstreamOptions, requestBody);
+        console.log(
+          "[Stampede-Test] Upstream response received for:",
+          req.path,
+        );
+        return result;
+      },
+      route.cache_enabled ? route.cache_ttl_ms : null,
+    );
 
-    // Collect the original request body for non-GET methods.
-    //
-    // WHY THIS LOGIC EXISTS:
-    // express.json() runs before the interceptor and consumes the raw request
-    // stream for any request with a JSON content-type. Once a stream is consumed
-    // it cannot be re-read - listening for "data" and "end" events would hang
-    // forever because "end" already fired, causing a timeout on every request.
-    //
-    // So we check in order:
-    // 1. If Express already parsed the body (req.body is a non-empty object),
-    //    re-serialize it back to a Buffer and use that.
-    // 2. If the stream has not been consumed (req.readable is still true),
-    //    read it manually. This covers raw/non-JSON content types.
-    // 3. Otherwise (GET, HEAD, no body) resolve with an empty Buffer immediately.
-    let requestBody;
-
-    if (req.body && Object.keys(req.body).length > 0) {
-      // express.json() already parsed it - re-serialize for forwarding.
-      requestBody = Buffer.from(JSON.stringify(req.body));
-    } else if (req.readable) {
-      // Stream has not been consumed yet - read it manually.
-      requestBody = await new Promise((resolve) => {
-        const chunks = [];
-        req.on("data", (c) => chunks.push(c));
-        req.on("end", () => resolve(Buffer.concat(chunks)));
-      });
-    } else {
-      // GET / HEAD / stream already consumed with no body - nothing to forward.
-      requestBody = Buffer.alloc(0);
+    // Determine the X-Cache header value based on how the response was served.
+    // HIT        -> served from LRU cache
+    // COALESCED  -> waited on an in-flight request, no upstream call made
+    // MISS       -> we made the upstream call ourselves
+    let cacheStatus = "MISS";
+    if (response.fromCache) {
+      cacheStatus = "HIT";
+      cacheHit = true;
+    } else if (response.coalesced) {
+      cacheStatus = "COALESCED";
     }
 
-    const upstream = await forwardRequest(options, requestBody);
-
-    // STEP 4: Populate cache with the upstream response.
-    if (route.cache_enabled) {
-      setCachedResponse(req, upstream, route.cache_ttl_ms);
-    }
-
-    // STEP 5: Send the upstream response to the original client.
+    // STEP 5: Send response to client.
     const {
       connection,
       "transfer-encoding": te,
       ...safeHeaders
-    } = upstream.headers;
+    } = response.headers;
     res.set(safeHeaders);
-    res.set("X-Cache", "MISS");
-    res.status(upstream.statusCode).send(upstream.body);
+    res.set("X-Cache", cacheStatus);
+    res.status(response.statusCode).send(response.body);
 
     // STEP 6: Log the completed request (non-blocking).
     log({
@@ -278,13 +253,13 @@ async function interceptor(req, res, next) {
       route_prefix: route.prefix,
       method: req.method,
       path: req.path,
-      status_code: upstream.statusCode,
+      status_code: response.statusCode,
       duration_ms: Date.now() - startTime,
-      cache_hit: false,
+      cache_hit: response.fromCache || response.coalesced,
       rate_limited: false,
       client_ip: clientIp,
       request_size_bytes: requestBody.length,
-      response_size_bytes: upstream.body.length,
+      response_size_bytes: response.body.length,
     });
   } catch (err) {
     const duration = Date.now() - startTime;
