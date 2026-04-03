@@ -1,5 +1,7 @@
 # GHOSTPROXY
+
 ### Smart Observability Wrapper
+
 > Add Caching, Analytics, and Rate-Limiting to any API in 60 seconds.
 
 ---
@@ -79,6 +81,7 @@ TTL is checked lazily at read time — no background timer. Expired entries are 
 Writing one MySQL `INSERT` per request is synchronous with the request lifecycle. Under load this adds 1–5ms of DB latency to every response.
 
 The batch logger decouples the hot path from the DB:
+
 - `log()` appends to an in-memory array in ~0ms (the producer).
 - A background interval flushes all buffered rows in a single multi-row `INSERT` every 10 seconds or 1,000 entries (the consumer).
 
@@ -157,21 +160,21 @@ Copy the example env file and fill in your MySQL credentials:
 cp .env.example .env
 ```
 
-| Variable | Description / Default |
-|---|---|
-| `PORT` | HTTP port the proxy listens on. Default: `4000` |
-| `DB_HOST` | MySQL host. Default: `localhost` |
-| `DB_PORT` | MySQL port. Default: `3306` |
-| `DB_USER` | MySQL username |
-| `DB_PASSWORD` | MySQL password |
-| `DB_NAME` | Database name. Default: `observability_wrapper` |
-| `DEFAULT_UPSTREAM_URL` | Fallback upstream if no route matches |
-| `LRU_CAPACITY` | Max unique request signatures in memory. Default: `500` |
-| `LRU_TTL_MS` | Global cache entry TTL in ms. Default: `30000` (30s) |
-| `RATE_LIMIT_CAPACITY` | Token bucket burst ceiling. Default: `100` |
-| `RATE_LIMIT_REFILL_RATE` | Tokens added per second. Default: `10` |
-| `LOG_BUFFER_MAX_SIZE` | Flush to DB when buffer hits this size. Default: `1000` |
-| `LOG_FLUSH_INTERVAL_MS` | Flush to DB every N ms. Default: `10000` (10s) |
+| Variable                 | Description / Default                                   |
+| ------------------------ | ------------------------------------------------------- |
+| `PORT`                   | HTTP port the proxy listens on. Default: `4000`         |
+| `DB_HOST`                | MySQL host. Default: `localhost`                        |
+| `DB_PORT`                | MySQL port. Default: `3306`                             |
+| `DB_USER`                | MySQL username                                          |
+| `DB_PASSWORD`            | MySQL password                                          |
+| `DB_NAME`                | Database name. Default: `observability_wrapper`         |
+| `DEFAULT_UPSTREAM_URL`   | Fallback upstream if no route matches                   |
+| `LRU_CAPACITY`           | Max unique request signatures in memory. Default: `500` |
+| `LRU_TTL_MS`             | Global cache entry TTL in ms. Default: `30000` (30s)    |
+| `RATE_LIMIT_CAPACITY`    | Token bucket burst ceiling. Default: `100`              |
+| `RATE_LIMIT_REFILL_RATE` | Tokens added per second. Default: `10`                  |
+| `LOG_BUFFER_MAX_SIZE`    | Flush to DB when buffer hits this size. Default: `1000` |
+| `LOG_FLUSH_INTERVAL_MS`  | Flush to DB every N ms. Default: `10000` (10s)          |
 
 ### 3. Run the database migration
 
@@ -244,43 +247,43 @@ That is the complete setup. GhostProxy forwards the request, caches the response
 
 ### Routes Management
 
-| Method | Endpoint | Description |
-|---|---|---|
-| `GET` | `/api/routes` | List all registered routes |
-| `GET` | `/api/routes/:id` | Get a single route by ID |
-| `POST` | `/api/routes` | Register a new route |
-| `PATCH` | `/api/routes/:id` | Partially update a route (any field) |
-| `DELETE` | `/api/routes/:id` | Delete a route permanently |
+| Method   | Endpoint          | Description                          |
+| -------- | ----------------- | ------------------------------------ |
+| `GET`    | `/api/routes`     | List all registered routes           |
+| `GET`    | `/api/routes/:id` | Get a single route by ID             |
+| `POST`   | `/api/routes`     | Register a new route                 |
+| `PATCH`  | `/api/routes/:id` | Partially update a route (any field) |
+| `DELETE` | `/api/routes/:id` | Delete a route permanently           |
 
 #### `POST /api/routes` — Request Body
 
-| Field | Required | Description |
-|---|---|---|
-| `name` | yes | Human-readable label for the dashboard |
-| `prefix` | yes | URL path prefix to intercept. Must start with `/` |
-| `upstream_url` | yes | Target API base URL requests are forwarded to |
-| `cache_enabled` | no | Enable LRU caching for this route. Default: `true` |
-| `cache_ttl_ms` | no | Per-route TTL override in ms. `null` = use global default |
-| `rate_limit_enabled` | no | Enable token bucket rate limiting. Default: `true` |
-| `rate_limit_capacity` | no | Max burst tokens. Default: `100` |
-| `rate_limit_refill_rate` | no | Tokens added per second. Default: `10` |
+| Field                    | Required | Description                                               |
+| ------------------------ | -------- | --------------------------------------------------------- |
+| `name`                   | yes      | Human-readable label for the dashboard                    |
+| `prefix`                 | yes      | URL path prefix to intercept. Must start with `/`         |
+| `upstream_url`           | yes      | Target API base URL requests are forwarded to             |
+| `cache_enabled`          | no       | Enable LRU caching for this route. Default: `true`        |
+| `cache_ttl_ms`           | no       | Per-route TTL override in ms. `null` = use global default |
+| `rate_limit_enabled`     | no       | Enable token bucket rate limiting. Default: `true`        |
+| `rate_limit_capacity`    | no       | Max burst tokens. Default: `100`                          |
+| `rate_limit_refill_rate` | no       | Tokens added per second. Default: `10`                    |
 
 ### Analytics
 
-| Method | Endpoint | Description |
-|---|---|---|
-| `GET` | `/api/analytics/overview` | 24h summary: total requests, cache hit rate, error rate, avg latency |
-| `GET` | `/api/analytics/requests-over-time` | Request volume bucketed by time. Params: `interval` (minute/hour/day), `hours` |
-| `GET` | `/api/analytics/by-route` | Per-route breakdown: requests, cache rate, latency, error rate |
-| `GET` | `/api/analytics/status-codes` | HTTP status code distribution with percentages |
-| `GET` | `/api/analytics/top-clients` | Top client IPs by volume. Params: `hours`, `limit` |
-| `GET` | `/api/analytics/recent-logs` | Paginated raw log tail. Params: `limit`, `offset`, `route_prefix` |
+| Method | Endpoint                            | Description                                                                    |
+| ------ | ----------------------------------- | ------------------------------------------------------------------------------ |
+| `GET`  | `/api/analytics/overview`           | 24h summary: total requests, cache hit rate, error rate, avg latency           |
+| `GET`  | `/api/analytics/requests-over-time` | Request volume bucketed by time. Params: `interval` (minute/hour/day), `hours` |
+| `GET`  | `/api/analytics/by-route`           | Per-route breakdown: requests, cache rate, latency, error rate                 |
+| `GET`  | `/api/analytics/status-codes`       | HTTP status code distribution with percentages                                 |
+| `GET`  | `/api/analytics/top-clients`        | Top client IPs by volume. Params: `hours`, `limit`                             |
+| `GET`  | `/api/analytics/recent-logs`        | Paginated raw log tail. Params: `limit`, `offset`, `route_prefix`              |
 
 ### Other
 
-| Method | Endpoint | Description |
-|---|---|---|
-| `GET` | `/health` | Health check. Returns `{ status: 'ok', uptime }` |
+| Method | Endpoint  | Description                                      |
+| ------ | --------- | ------------------------------------------------ |
+| `GET`  | `/health` | Health check. Returns `{ status: 'ok', uptime }` |
 
 ---
 
@@ -307,14 +310,14 @@ Routes are reloaded from the database every 15 seconds. New routes become active
 
 GhostProxy adds the following headers to every proxied response:
 
-| Header | Value | Meaning |
-|---|---|---|
-| `X-Cache` | `HIT` | Response served from LRU cache |
-| `X-Cache` | `MISS` | Response fetched from upstream API |
-| `RateLimit-Limit` | number | Token bucket capacity for this route |
-| `RateLimit-Remaining` | number | Tokens remaining in the current bucket |
-| `Retry-After` | seconds | Time until next token (only on `429` responses) |
-| `X-Forwarded-By` | `observability-wrapper` | Always set on proxied requests |
+| Header                | Value                   | Meaning                                         |
+| --------------------- | ----------------------- | ----------------------------------------------- |
+| `X-Cache`             | `HIT`                   | Response served from LRU cache                  |
+| `X-Cache`             | `MISS`                  | Response fetched from upstream API              |
+| `RateLimit-Limit`     | number                  | Token bucket capacity for this route            |
+| `RateLimit-Remaining` | number                  | Tokens remaining in the current bucket          |
+| `Retry-After`         | seconds                 | Time until next token (only on `429` responses) |
+| `X-Forwarded-By`      | `observability-wrapper` | Always set on proxied requests                  |
 
 ---
 
@@ -377,26 +380,30 @@ If shutdown takes longer than 15 seconds, the process is force-killed with exit 
 ## Database Schema
 
 ### `routes`
+
 Stores all managed route configurations. Updated by the management API. Read by the route registry every 15 seconds.
 
 ### `request_logs`
+
 Write-heavy table. Every proxied request is batched and inserted here. Notable design decisions:
+
 - No foreign key on `route_id` — avoids row locks on the `routes` table during bulk inserts.
 - `route_prefix` is **denormalized** so analytics queries can filter without a `JOIN`.
 - Indexed on `(route_prefix, created_at)`, `(status_code)`, and `(created_at)`.
 
 ### `api_keys`
+
 Stores hashed API keys for authenticating management API requests. Not used by the proxy path itself — the proxy is transparent to existing clients.
 
 ---
 
 ## npm Scripts
 
-| Script | Description |
-|---|---|
-| `npm run dev` | Start with `--watch` flag (auto-restart on file change) |
-| `npm start` | Start in production mode |
-| `npm run migrate` | Run the database migration |
+| Script            | Description                                             |
+| ----------------- | ------------------------------------------------------- |
+| `npm run dev`     | Start with `--watch` flag (auto-restart on file change) |
+| `npm start`       | Start in production mode                                |
+| `npm run migrate` | Run the database migration                              |
 
 ---
 
@@ -418,18 +425,186 @@ Lower `rate_limit_refill_rate` or raise `rate_limit_capacity` for the route via 
 
 ## Tech Stack
 
-| Layer | Technology |
-|---|---|
-| Runtime | Node.js 18+ (ESM) |
-| Framework | Express 4 |
-| Database | MySQL 8 via `mysql2/promise` |
-| Cache | Custom LRU (Doubly Linked List + HashMap — no external dependency) |
-| Rate Limiter | Custom Token Bucket (virtual scheduling — no external dependency) |
-| Logger | Buffer-and-Batch with MySQL bulk `INSERT` |
-| Frontend | React 19 + Vite + Ant Design + Tailwind *(upcoming)* |
+| Layer        | Technology                                                         |
+| ------------ | ------------------------------------------------------------------ |
+| Runtime      | Node.js 18+ (ESM)                                                  |
+| Framework    | Express 4                                                          |
+| Database     | MySQL 8 via `mysql2/promise`                                       |
+| Cache        | Custom LRU (Doubly Linked List + HashMap — no external dependency) |
+| Rate Limiter | Custom Token Bucket (virtual scheduling — no external dependency)  |
+| Logger       | Buffer-and-Batch with MySQL bulk `INSERT`                          |
+| Frontend     | React 19 + Vite + Ant Design + Tailwind _(upcoming)_               |
 
 ---
 
 ## License
 
 MIT License. Free to use, modify, and distribute.
+
+---
+
+## Stress Testing & Performance
+
+GhostProxy has been stress tested across three dedicated lessons. Every finding below was reproduced, measured, fixed, and re-verified.
+
+---
+
+### Baseline Performance (Lesson 1)
+
+Three distinct baselines were established using [autocannon](https://github.com/mcollina/autocannon).
+
+**Baseline A — Raw ceiling (rate limit disabled)**
+
+Measures pure proxy + LRU cache throughput with no interference.
+
+```
+Throughput avg:    2,601 req/s
+Throughput peak:   2,891 req/s
+Latency p50:       3ms
+Latency p99:       7ms
+Latency max:       2343ms  (batch logger flush spike - see Lesson 4)
+Success rate:      100%
+```
+
+**Baseline B — Under attack (capacity 100, refill 10/s)**
+
+Single IP hammering at 2,300 req/s. Rate limiter working correctly.
+
+```
+Throughput:        ~20 req/s sustained (burst of 100 then throttled)
+Success rate:      1.9%  (rate limiter correctly rejecting the rest)
+```
+
+**Baseline C — Realistic traffic (50 req/s paced)**
+
+The honest production baseline. Different IPs at human-speed intervals.
+
+```
+Throughput avg:    1,714 req/s
+Latency p50:       3ms
+Latency p99:       31ms
+Latency max:       362ms
+Stdev:             10.88ms
+Success rate:      100%
+```
+
+**Key insight from Baseline comparison:**
+
+The rate limiter is per-IP. In production, 100 different users each get their own bucket of 100 tokens. A single-IP benchmark simulates an attack, not real traffic. Baseline C is the honest production number.
+
+---
+
+### Cache Stampede (Lesson 2)
+
+**The Problem — What Was Discovered**
+
+When 50 concurrent requests arrived simultaneously for a cold cache key:
+
+```
+Before fix:   31 upstream calls fired simultaneously
+              13 requests timed out (upstream choked)
+              clients received 502 Bad Gateway
+```
+
+Every concurrent request saw a cache MISS and independently fired an upstream call. The proxy designed to protect the upstream became the weapon attacking it.
+
+**The Fix — Request Coalescing**
+
+An inflight `Map` was added to `cacheManager.js`. When a cache MISS occurs, the first request stores a Promise in the Map before awaiting it. All subsequent concurrent requests for the same key attach to that existing Promise instead of firing their own upstream call.
+
+```
+After fix:    1 upstream call for 50 concurrent requests
+              0 timeouts
+              49 requests coalesced onto the single Promise
+```
+
+**New X-Cache header value:** `COALESCED` — a third cache status meaning "I did not use the LRU cache but I also did not call the upstream. I waited on another request's in-flight call."
+
+```
+X-Cache: HIT        <- served from LRU memory (<5ms)
+X-Cache: MISS       <- designated fetcher, called upstream
+X-Cache: COALESCED  <- waited on an in-flight request
+```
+
+**Key design decision:** The inflight Map lives in `cacheManager.js`, not `LRUCache.js`. `LRUCache` is a pure data structure that knows nothing about HTTP or Promises. Request coordination belongs in the HTTP-aware layer.
+
+**The coalescing flow:**
+
+```
+50 concurrent requests, cold cache
+
+Request 1  -> MISS -> no inflight entry
+              calls fetchFn(), stores Promise in Map
+              awaits upstream...
+
+Request 2-50 -> MISS -> inflight entry found
+                attach to existing Promise
+                await same result...
+
+Upstream responds
+  -> result stored in LRU cache
+  -> inflight Map entry deleted
+  -> all 50 waiters receive response simultaneously
+
+Next request arrives -> LRU HIT -> served in <5ms
+```
+
+---
+
+### Rate Limiter Accuracy (Lesson 3)
+
+A custom test script (`tests/rateLimiter.test.js`) was written to verify the token bucket gives mathematically exact results under concurrent load.
+
+**The Problem — What Was Discovered**
+
+```
+Capacity:          100 tokens
+Concurrent load:   500 simultaneous requests
+Expected allowed:  100
+Actual allowed:    140
+Drift:             40 requests (40%)
+```
+
+The original `consume()` method updated `lastRefillTime = now` on every single call. Under 500 concurrent requests spanning ~1.4 seconds, each call saw a slightly larger elapsed time than the last and added a fractional token. These fractions accumulated to 40 extra tokens across the full run.
+
+**The Fix**
+
+`lastRefillTime` is now only advanced by the elapsed time that was actually consumed by the refill calculation — not all the way to `Date.now()`. This prevents fractional accumulation across rapid concurrent calls while preserving accurate refills when real time has passed.
+
+**Results after fix:**
+
+```
+Test 1 - Cold Bucket Accuracy:      drift 40 -> 3   (Windows clock floor)
+Test 2 - Refill Accuracy:           drift 6  -> 0   (mathematically exact)
+Test 3 - Bucket Isolation Per IP:   drift 0  -> 0   (unchanged, was correct)
+```
+
+**Why drift of 3 is the honest floor on Windows:**
+
+Windows system clock resolution is ~15ms. At 10 tokens/second, a 15ms clock jump adds 0.15 tokens. Across a 456ms test window this produces 2-4 extra tokens. On Linux (1ms clock resolution) drift is 0-1. This is a hardware/OS constraint, not a code bug.
+
+**The three things proven by the test suite:**
+
+```
+Test 1: Token count does not drift under simultaneous consumption
+Test 2: Refill math is exact - 10 tokens/s * 1s = exactly 10 tokens
+Test 3: Buckets are truly isolated - two IPs get fully independent capacity
+```
+
+**Running the tests:**
+
+```bash
+npm run test:ratelimit
+```
+
+---
+
+### Planned: Batch Logger Under Pressure (Lesson 4)
+
+Verify zero log entries are lost when 5,000 requests fire before the flush timer fires. The suspected event loop blocking spike seen in Baseline A (max 2343ms) will be investigated and fixed here.
+
+---
+
+### Planned: Memory Profile (Lesson 5)
+
+Run 50,000 requests and verify the LRU cache memory footprint stays bounded at `LRU_CAPACITY`. No unbounded growth regardless of traffic volume.

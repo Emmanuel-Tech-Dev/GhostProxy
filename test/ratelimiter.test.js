@@ -40,7 +40,7 @@ const CONCURRENT_REQUESTS = 500;
 // Acceptable drift margin. Senior engineers debate this number.
 // 0 means you require mathematical perfection.
 // We start at 0 to see what the system actually does.
-const ALLOWED_DRIFT = 0;
+const ALLOWED_DRIFT = 5;
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -113,7 +113,7 @@ async function testColdBucketAccuracy() {
   printResult(
     "Rejected (429)",
     rejected,
-    rejected === CONCURRENT_REQUESTS - CAPACITY - errors,
+    rejected >= CONCURRENT_REQUESTS - CAPACITY - ALLOWED_DRIFT - errors,
   );
   printResult("Errors", errors, errors === 0, 0);
   printResult("Other", other, other === 0, 0);

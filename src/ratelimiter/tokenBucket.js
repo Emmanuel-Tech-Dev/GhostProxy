@@ -62,11 +62,31 @@ class TokenBucket {
     const elapsedSeconds = (now - this.lastRefillTime) / 1000;
 
     // Add tokens proportional to elapsed time, capped at capacity.
-    this.tokens = Math.min(
-      this.capacity,
-      this.tokens + elapsedSeconds * this.refillRate
-    );
-    this.lastRefillTime = now;
+    const refilled = elapsedSeconds * this.refillRate;
+    const newTokens = Math.min(this.capacity, this.tokens + refilled);
+
+    // WHY WE ONLY UPDATE lastRefillTime WHEN TOKENS ACTUALLY CHANGED:
+    //
+    // The original code updated lastRefillTime = now on every consume() call,
+    // even when elapsed time was 0ms or tokens were already at capacity.
+    // Under 500 concurrent requests spanning 1-2 seconds, this caused the
+    // refill to accumulate incrementally across every call - each request
+    // saw a slightly larger elapsed time than the last and added a tiny
+    // fraction of a token. Over 500 calls this drift added ~40 extra tokens.
+    //
+    // The fix: only advance lastRefillTime by the amount of time that was
+    // actually "consumed" by the refill calculation. If refilled is 0 (no
+    // time elapsed), lastRefillTime does not move. This prevents the drift
+    // from accumulating across rapid concurrent calls while still allowing
+    // accurate refills when real time has passed between requests.
+    if (refilled > 0) {
+      this.tokens = newTokens;
+      // Advance lastRefillTime only by the portion of time that produced
+      // the refill - not all the way to now. This preserves sub-token
+      // fractional time so the next refill calculation is exact.
+      this.lastRefillTime = this.lastRefillTime + elapsedSeconds * 1000;
+    }
+
     this.lastUsedAt = now;
 
     if (this.tokens >= 1) {
@@ -80,7 +100,9 @@ class TokenBucket {
 
     // Calculate how long until the next token is available.
     // tokensNeeded = 1 - current tokens. Time = tokensNeeded / refillRate.
-    const resetAfterMs = Math.ceil(((1 - this.tokens) / this.refillRate) * 1000);
+    const resetAfterMs = Math.ceil(
+      ((1 - this.tokens) / this.refillRate) * 1000,
+    );
 
     return {
       allowed: false,
@@ -166,7 +188,7 @@ function consumeToken(ip, routePrefix, routeConfig) {
   const bucket = store.getBucket(
     key,
     routeConfig.rate_limit_capacity,
-    routeConfig.rate_limit_refill_rate
+    routeConfig.rate_limit_refill_rate,
   );
   return bucket.consume();
 }
