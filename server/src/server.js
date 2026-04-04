@@ -31,6 +31,8 @@ import analyticsApi from "./routes/analyticsApi.js";
 import errorHandler from "./middleware/errorHandler.js";
 import { requireAuth } from "./auth/authMiddleware.js";
 import pool from "./db/pool.js";
+import accountApi from "./routes/accountApi.js";
+import apiKeysApi from "./routes/apiKeysApi.js";
 
 const app = express();
 const PORT = Number(process.env.PORT) || 4000;
@@ -60,6 +62,8 @@ app.use("/auth", authApi);
 
 app.use("/api/routes", requireAuth, routesApi);
 app.use("/api/analytics", requireAuth, analyticsApi);
+app.use("/api/account", requireAuth, accountApi);
+app.use("/api/keys", requireAuth, apiKeysApi);
 
 // ─── Proxy interceptor ────────────────────────────────────────────────────────
 

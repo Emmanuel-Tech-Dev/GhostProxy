@@ -78,30 +78,10 @@ async function createRefreshToken(userId) {
   return raw;
 }
 
-/**
- * Verifies an access token and returns the decoded payload.
- * Throws if the token is invalid or expired.
- *
- * @param {string} token
- * @returns {{ sub: number, email: string, plan_tier: string }}
- */
 function verifyAccessToken(token) {
   return jwt.verify(token, ACCESS_TOKEN_SECRET);
 }
 
-/**
- * Validates a refresh token against the DB, rotates it (deletes old, creates new),
- * and returns a fresh access token + new refresh token.
- *
- * WHY ROTATE REFRESH TOKENS:
- * Token rotation means each refresh token can only be used once. After use,
- * a new one is issued and the old one is deleted. If an attacker steals a
- * refresh token and tries to use it after the legitimate user has already
- * rotated it, the token will not be found in the DB and the request fails.
- *
- * @param {string} rawToken
- * @returns {Promise<{ accessToken: string, refreshToken: string, user: object }>}
- */
 async function rotateRefreshToken(rawToken) {
   const hash = crypto.createHash("sha256").update(rawToken).digest("hex");
 

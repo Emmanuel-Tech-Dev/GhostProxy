@@ -46,13 +46,6 @@ const REFRESH_COOKIE_OPTIONS = {
   path: "/auth/refresh", // Cookie only sent to the refresh endpoint
 };
 
-/**
- * POST /auth/register
- *
- * Creates a new user account.
- * Returns access token immediately so the user does not need to login
- * separately after registering.
- */
 async function register(req, res) {
   const { email, password, full_name } = req.body;
 
@@ -92,21 +85,10 @@ async function register(req, res) {
       plan_tier: "self_hosted",
     };
 
-    const accessToken = signAccessToken(user);
-    const refreshToken = await createRefreshToken(user.id);
-
-    res.cookie("refresh_token", refreshToken, REFRESH_COOKIE_OPTIONS);
-
     return res.status(201).json({
       success: true,
       data: {
-        access_token: accessToken,
-        user: {
-          id: user.id,
-          email: user.email,
-          full_name: full_name || null,
-          plan_tier: user.plan_tier,
-        },
+        ...user,
       },
     });
   } catch (err) {
@@ -120,15 +102,6 @@ async function register(req, res) {
   }
 }
 
-/**
- * POST /auth/login
- *
- * Authenticates a user and returns tokens.
- *
- * WHY WE USE THE SAME ERROR MESSAGE FOR WRONG EMAIL AND WRONG PASSWORD:
- * Returning "email not found" vs "wrong password" lets an attacker enumerate
- * which emails are registered. Always return the same message for both cases.
- */
 async function login(req, res) {
   const { email, password } = req.body;
 
@@ -144,10 +117,6 @@ async function login(req, res) {
     [email.toLowerCase().trim()],
   );
 
-  // Use a constant-time comparison even when the user does not exist.
-  // Without this, an attacker can tell if an email is registered by measuring
-  // the response time - a missing user returns instantly, a wrong password
-  // takes ~250ms for bcrypt. We hash a dummy value to normalize timing.
   const user = rows[0];
   const hashToCompare = user
     ? user.password_hash
@@ -232,19 +201,6 @@ async function refresh(req, res) {
   }
 }
 
-/**
- * POST /auth/logout
- *
- * Revokes all refresh tokens for the user and clears the cookie.
- * The access token will expire naturally after 15 minutes.
- *
- * WHY NOT INVALIDATE THE ACCESS TOKEN:
- * Access tokens are stateless - there is no central registry to check them
- * against. The only way to "invalidate" them is to wait for expiry.
- * This is why the expiry is kept short (15 min). For immediate invalidation
- * (e.g. account compromise), rotate the JWT_ACCESS_SECRET in .env and
- * restart the server - all outstanding tokens become invalid instantly.
- */
 async function logout(req, res) {
   await revokeAllRefreshTokens(req.user.id);
   res.clearCookie("refresh_token", { path: "/auth/refresh" });

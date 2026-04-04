@@ -51,23 +51,26 @@ router.get("/overview", async (req, res) => {
     res.status(500).json({ success: false, error: err.message });
   }
 });
-
 // GET /api/analytics/requests-over-time
 router.get("/requests-over-time", async (req, res) => {
-  const interval = ["minute", "hour", "day"].includes(req.query.interval)
+  const interval = ["minute", "hour", "day", "week", "month", "all"].includes(
+    req.query.interval,
+  )
     ? req.query.interval
     : "hour";
-  const hours = Math.min(Number(req.query.hours) || 24, 720);
+  const hours = Math.min(Number(req.query.hours) || 24, 720, 3600);
 
   const formatMap = {
     minute: "%Y-%m-%d %H:%i:00",
     hour: "%Y-%m-%d %H:00:00",
     day: "%Y-%m-%d 00:00:00",
+    week: "%Y-%m-%d 00:00:00",
+    month: "%Y-%m-01 00:00:00",
+    all: "%Y-%m-%d 00:00:00",
   };
 
   try {
-    const [rows] = await pool.query(
-      `SELECT
+    let query = `SELECT
          DATE_FORMAT(created_at, ?) AS bucket,
          COUNT(*)                   AS total,
          SUM(cache_hit)             AS cache_hits,
@@ -75,11 +78,20 @@ router.get("/requests-over-time", async (req, res) => {
          ROUND(AVG(duration_ms), 2) AS avg_latency_ms,
          SUM(CASE WHEN status_code >= 400 THEN 1 ELSE 0 END) AS errors
        FROM request_logs
-       WHERE user_id = ? AND created_at >= NOW() - INTERVAL ? HOUR
-       GROUP BY bucket
-       ORDER BY bucket ASC`,
-      [formatMap[interval], req.user.id, hours],
-    );
+       WHERE user_id = ?`;
+
+    const params = [formatMap[interval], req.user.id];
+
+    // Only apply time window if not 'all'
+    if (interval !== "all") {
+      query += ` AND created_at >= NOW() - INTERVAL ? HOUR`;
+      params.push(hours);
+    }
+
+    query += ` GROUP BY bucket ORDER BY bucket ASC`;
+
+    const [rows] = await pool.query(query, params);
+
     res.json({ success: true, data: rows });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
