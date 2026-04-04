@@ -646,7 +646,7 @@ Hashed API keys with `management` and `proxy` type separation. Raw key shown onc
 | State | Zustand v4 |
 | Charts | Recharts |
 | Routing | React Router v6 |
-| HTTP | Axios 0.27.2 |
+| HTTP | Axios 1.7.0 |
 
 ---
 
