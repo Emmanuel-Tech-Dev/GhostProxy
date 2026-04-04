@@ -36,18 +36,16 @@ async function loadRoutes() {
       "SELECT * FROM routes WHERE is_active = 1 ORDER BY LENGTH(prefix) DESC",
     );
 
+    const sorted = [...rows].sort((a, b) => b.prefix.length - a.prefix.length);
+
     const next = new Map();
-    for (const row of rows) {
+    for (const row of sorted) {
       next.set(row.prefix, row);
     }
 
-    // Atomic swap. Any in-flight request using the old registry will complete
-    // normally. The next request picks up the new one.
     registry = next;
     console.log(`[RouteRegistry] Loaded ${registry.size} active routes.`);
   } catch (err) {
-    // If the reload fails (e.g., DB blip), keep the existing registry.
-    // Stale config is better than no config.
     console.error(
       "[RouteRegistry] Reload failed, keeping existing config:",
       err.message,
@@ -55,20 +53,10 @@ async function loadRoutes() {
   }
 }
 
-/**
- * Finds the most specific (longest) matching route for a given request path.
- *
- * @param {string} requestPath - e.g. "/api/v1/users/42"
- * @returns {object|null} The matching route config or null.
- */
 function matchRoute(requestPath) {
-  // The registry is sorted by prefix length DESC (done in the SQL ORDER BY).
-  // We iterate and return the first (longest) match.
-
-  console.log(requestPath);
   for (const [prefix, config] of registry) {
     if (requestPath.startsWith(prefix)) {
-      console.log("[RouteRegistry] Matched:", requestPath, "->", prefix); // temporary
+      // console.log("[RouteRegistry] Matched:", requestPath, "->", prefix); // temporary
 
       return config;
     }
@@ -76,10 +64,6 @@ function matchRoute(requestPath) {
   return null;
 }
 
-/**
- * Returns all routes currently in the registry (for the dashboard API).
- * @returns {object[]}
- */
 function getAllRoutes() {
   return Array.from(registry.values());
 }

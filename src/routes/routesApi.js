@@ -1,15 +1,12 @@
 /**
  * routes/routesApi.js
  *
- * CRUD endpoints for managing proxy routes through the dashboard.
+ * CRUD for proxy routes. Every query is scoped to req.user.id.
+ * A user can only see, create, update, and delete their own routes.
  *
- * Design: Thin controller. Each handler does only:
- * 1. Validate input
- * 2. Execute one DB operation
- * 3. Return the result
- *
- * No business logic lives here. The route registry polling picks up changes
- * automatically within RELOAD_INTERVAL_MS seconds.
+ * This is the application-layer enforcement of multi-tenancy.
+ * The DB has a user_id column and FK, but we never rely on the DB constraint
+ * alone - we always filter by req.user.id in every query explicitly.
  */
 
 import { Router } from "express";
@@ -18,14 +15,12 @@ import { loadRoutes } from "../proxy/routeRegistry.js";
 
 const router = Router();
 
-/**
- * GET /api/routes
- * Returns all registered routes (including inactive ones for the dashboard).
- */
+// GET /api/routes
 router.get("/", async (req, res) => {
   try {
     const [rows] = await pool.query(
-      "SELECT * FROM routes ORDER BY created_at DESC",
+      "SELECT * FROM routes WHERE user_id = ? ORDER BY created_at DESC",
+      [req.user.id],
     );
     res.json({ success: true, data: rows });
   } catch (err) {
@@ -33,14 +28,13 @@ router.get("/", async (req, res) => {
   }
 });
 
-/**
- * GET /api/routes/:id
- */
+// GET /api/routes/:id
 router.get("/:id", async (req, res) => {
   try {
-    const [rows] = await pool.query("SELECT * FROM routes WHERE id = ?", [
-      req.params.id,
-    ]);
+    const [rows] = await pool.query(
+      "SELECT * FROM routes WHERE id = ? AND user_id = ?",
+      [req.params.id, req.user.id],
+    );
     if (rows.length === 0) {
       return res.status(404).json({ success: false, error: "Route not found" });
     }
@@ -50,10 +44,7 @@ router.get("/:id", async (req, res) => {
   }
 });
 
-/**
- * POST /api/routes
- * Registers a new managed route.
- */
+// POST /api/routes
 router.post("/", async (req, res) => {
   const {
     name,
@@ -83,10 +74,11 @@ router.post("/", async (req, res) => {
   try {
     const [result] = await pool.query(
       `INSERT INTO routes
-         (name, prefix, upstream_url, cache_enabled, cache_ttl_ms,
+         (user_id, name, prefix, upstream_url, cache_enabled, cache_ttl_ms,
           rate_limit_enabled, rate_limit_capacity, rate_limit_refill_rate)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
+        req.user.id,
         name,
         prefix,
         upstream_url,
@@ -98,26 +90,20 @@ router.post("/", async (req, res) => {
       ],
     );
 
-    // Immediately reload the registry so the new route is live without waiting
-    // for the next poll cycle.
     await loadRoutes();
-
     res.status(201).json({ success: true, data: { id: result.insertId } });
   } catch (err) {
     if (err.code === "ER_DUP_ENTRY") {
       return res.status(409).json({
         success: false,
-        error: `A route with prefix "${prefix}" already exists`,
+        error: `You already have a route with prefix "${prefix}"`,
       });
     }
     res.status(500).json({ success: false, error: err.message });
   }
 });
 
-/**
- * PATCH /api/routes/:id
- * Partial update. Only the fields provided in the body are changed.
- */
+// PATCH /api/routes/:id
 router.patch("/:id", async (req, res) => {
   const allowed = [
     "name",
@@ -132,9 +118,7 @@ router.patch("/:id", async (req, res) => {
 
   const updates = {};
   for (const key of allowed) {
-    if (req.body[key] !== undefined) {
-      updates[key] = req.body[key];
-    }
+    if (req.body[key] !== undefined) updates[key] = req.body[key];
   }
 
   if (Object.keys(updates).length === 0) {
@@ -147,10 +131,10 @@ router.patch("/:id", async (req, res) => {
     const setClauses = Object.keys(updates)
       .map((k) => `${k} = ?`)
       .join(", ");
-    const values = [...Object.values(updates), req.params.id];
+    const values = [...Object.values(updates), req.params.id, req.user.id];
 
     const [result] = await pool.query(
-      `UPDATE routes SET ${setClauses} WHERE id = ?`,
+      `UPDATE routes SET ${setClauses} WHERE id = ? AND user_id = ?`,
       values,
     );
 
@@ -165,15 +149,13 @@ router.patch("/:id", async (req, res) => {
   }
 });
 
-/**
- * DELETE /api/routes/:id
- * Hard delete. In a production system you might prefer setting is_active = 0.
- */
+// DELETE /api/routes/:id
 router.delete("/:id", async (req, res) => {
   try {
-    const [result] = await pool.query("DELETE FROM routes WHERE id = ?", [
-      req.params.id,
-    ]);
+    const [result] = await pool.query(
+      "DELETE FROM routes WHERE id = ? AND user_id = ?",
+      [req.params.id, req.user.id],
+    );
     if (result.affectedRows === 0) {
       return res.status(404).json({ success: false, error: "Route not found" });
     }

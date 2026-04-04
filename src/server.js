@@ -1,84 +1,106 @@
+/**
+ * server.js
+ *
+ * Application entry point.
+ *
+ * Startup sequence:
+ * 1. Load env vars
+ * 2. Load routes from DB
+ * 3. Register middleware in correct order
+ * 4. Start logger flush timer
+ * 5. Bind to port
+ *
+ * Middleware order matters:
+ * - cookieParser must run before any route that reads cookies (auth/refresh)
+ * - express.json must run before routes that read req.body
+ * - Auth routes are public - mounted before requireAuth middleware
+ * - All /api/* routes are protected - requireAuth runs before them
+ * - Proxy interceptor runs last - catches everything not handled above
+ */
+
 import "dotenv/config";
 import express from "express";
 import cors from "cors";
+import cookieParser from "cookie-parser";
 import { loadRoutes, startWatching } from "./proxy/routeRegistry.js";
 import { interceptor } from "./proxy/interceptor.js";
 import { startFlushing, stopFlushing } from "./logger/batchLogger.js";
+import authApi from "./routes/authApi.js";
 import routesApi from "./routes/routesApi.js";
 import analyticsApi from "./routes/analyticsApi.js";
-import errorHandler from "./ErrorHandler.js";
+import errorHandler from "./middleware/errorHandler.js";
+import { requireAuth } from "./auth/authMiddleware.js";
 import pool from "./db/pool.js";
 
 const app = express();
 const PORT = Number(process.env.PORT) || 4000;
 
-// --- Middleware ---
+// ─── Core middleware ──────────────────────────────────────────────────────────
 
 app.use(
   cors({
-    // In production, restrict this to your dashboard origin.
-    origin: process.env.CORS_ORIGIN || "*",
+    origin: process.env.CORS_ORIGIN || "http://localhost:5173",
+    credentials: true, // Required for cookies to be sent cross-origin
   }),
 );
 
+// cookieParser must run before any route that reads req.cookies.
+// The refresh token lives in an httpOnly cookie.
+app.use(cookieParser());
+
 app.use(express.json());
+
+// ─── Health check ─────────────────────────────────────────────────────────────
 
 app.get("/health", (req, res) => {
   res.json({ status: "ok", uptime: process.uptime() });
 });
 
-// --- Management API ---
+app.use("/auth", authApi);
 
-app.use("/api/routes", routesApi);
-app.use("/api/analytics", analyticsApi);
+app.use("/api/routes", requireAuth, routesApi);
+app.use("/api/analytics", requireAuth, analyticsApi);
 
-// --- Proxy Interceptor ---
+// ─── Proxy interceptor ────────────────────────────────────────────────────────
 
 app.use(interceptor);
+
+// ─── 404 fallback ─────────────────────────────────────────────────────────────
 
 app.use((req, res) => {
   res.status(404).json({
     error: "Not Found",
-    message: `No managed route matches "${req.path}". Register it via POST /api/routes.`,
+    message: `No managed route matches "${req.path}".`,
   });
 });
 
-// --- Central error handler ---
+// ─── Central error handler ────────────────────────────────────────────────────
+
 app.use(errorHandler);
 
-// --- Startup ---
+// ─── Startup ──────────────────────────────────────────────────────────────────
+
 async function start() {
-  // Load routes first. If this fails, we should not start accepting traffic.
   await loadRoutes();
   startWatching();
   startFlushing();
 
   const server = app.listen(PORT, () => {
-    console.log(`[Server] Observability Wrapper running on port ${PORT}`);
-    console.log(`[Server] Management API: http://localhost:${PORT}/api`);
-    console.log(`[Server] Health check:   http://localhost:${PORT}/health`);
+    console.log(`[Server] GhostProxy running on port ${PORT}`);
+    console.log(`[Server] Auth API:        http://localhost:${PORT}/auth`);
+    console.log(`[Server] Management API:  http://localhost:${PORT}/api`);
+    console.log(`[Server] Health check:    http://localhost:${PORT}/health`);
   });
 
-  // --- Graceful Shutdown ---
   async function shutdown(signal) {
-    console.log(`\n[Server] Received ${signal}. Starting graceful shutdown...`);
-
-    // Stop accepting new connections. Existing connections finish normally.
+    console.log(`\n[Server] ${signal} received. Shutting down...`);
     server.close(async () => {
-      console.log("[Server] HTTP server closed.");
-
       await stopFlushing();
-
       await pool.end();
-      console.log("[Server] DB pool closed. Goodbye.");
+      console.log("[Server] Clean shutdown complete.");
       process.exit(0);
     });
-
-    // Force exit if shutdown takes longer than 15 seconds.
-    setTimeout(() => {
-      console.error("[Server] Forced shutdown after timeout.");
-      process.exit(1);
-    }, 15000);
+    setTimeout(() => process.exit(1), 15000);
   }
 
   process.on("SIGTERM", () => shutdown("SIGTERM"));
