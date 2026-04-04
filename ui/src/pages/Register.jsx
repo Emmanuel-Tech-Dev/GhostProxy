@@ -16,7 +16,7 @@ export default function Register() {
         try {
             const { data } = await register(values)
             setAuth(data.data.access_token, data.data.user)
-            navigate('/dashboard')
+            navigate('/login')
         } catch (err) {
             setError(err.response?.data?.error || 'Registration failed')
         } finally {
